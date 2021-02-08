@@ -1,0 +1,6 @@
+---
+- include_tasks: prerequisites.yml
+- include_tasks: security-groups-create.yml
+- include_tasks: route53-create.yml
+- include_tasks: bastion-deploy.yml
+- include_tasks: registry-deploy.yml

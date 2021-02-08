@@ -1,0 +1,44 @@
+---
+- name: Check if EC2 Bastion Exists
+  community.aws.ec2_instance_info:
+    filters:
+      "tag:Name": "{{ cluster_name }}-bastion-node"
+      instance-state-code: 
+      - "0"
+      - "16"
+      - "32"
+      - "64"
+      - "80"
+  register: ec2_instances
+
+- block:   
+  - name: Create EC2 Bastion
+    amazon.aws.ec2:
+      key_name: "{{ aws_ssh_key }}"
+      group: 
+      - "{{ cluster_name }}-master-sg"
+      instance_type: t2.xlarge
+      image: "{{ bastion_ami }}"
+      wait: yes
+      wait_timeout: 500
+      instance_tags:
+        Name: "{{ cluster_name }}-bastion-node"
+      monitoring: yes
+      vpc_subnet_id: "{{ bastion_subnet_id }}"
+      assign_public_ip: yes
+      region: us-gov-west-1
+      volumes:
+      - volume_size: "{{ bastion_disk_size }}"
+        device_name: /dev/sda1
+        delete_on_termination: yes
+    register: ec2_bastion
+  
+  - name: Use new Bastion for IP variable
+    set_fact:
+      bastion_ip: "{{ ec2_bastion.instances[0].private_ip }}"
+  when: ( ec2_instances.instances | length ) == 0
+
+- name: Set Existing Bastions IP varaible
+  set_fact:
+    bastion_ip: "{{ ec2_instances.instances[0].private_ip_address }}"
+  when: ( ec2_instances.instances | length ) > 0 

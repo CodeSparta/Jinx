@@ -1,0 +1,25 @@
+---
+# AWS Credentials
+aws_access_key_id: "{{ aws_access_key_id }}"
+aws_secret_access_key: "{{ aws_secret_access_key }}"
+
+vpc_id: "{{ vpc_id }}"
+
+# Name of AWS VPC
+# TODO: yes we know this is redundant right now
+vpc_name: "{{ cluster_name }}"
+cluster_name: "{{ cluster_name }}"
+name_cluster_vpc: "{{ cluster_name }}"
+name_domain: "{{ cluster_domain }}"
+                                                           
+subnet_list: 
+{% for subnet in cluster_subnet_ids %}
+  - {{ subnet }}
+{% endfor %}
+
+# AMI ID for CoreOS
+rhcos_ami: "ami-6e2a100f"
+
+aws_region: "us-gov-west-1"
+target_environment: "govcloud"
+private_vpc_cidr: "{{ vpc_cidr_block }}"

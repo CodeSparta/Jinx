@@ -1,0 +1,25 @@
+openshift_version: 4.6.15
+
+# Fill in Preferred AWS SSH Key Name, ex: rh-dev-blackpearl-us
+aws_ssh_key: xxxxxxxxx
+
+# Fill in VPC name here, ex: vpc01
+cluster_name: vpc0x
+
+# Fill in cluster subdomain, ex: rh.dev.blackpearl.us
+cluster_domain: cluster.example.com
+
+# Fill in 3 subnet ids for cluster to run on
+cluster_subnet_ids:
+- subnet-xxxxxxxxxxxxxxxxx 
+- subnet-xxxxxxxxxxxxxxxxx
+- subnet-xxxxxxxxxxxxxxxxx
+
+# Fill in subnet id to deploy bastion to
+bastion_subnet_id: subnet-xxxxxxxxxxxxxxxxx
+
+# Fill in CIDR block for VPC, ex: "10.126.126.0/23"
+vpc_cidr_block: ""
+
+# VPC ID for cluster VPC
+vpc_id: vpc-xxxxxxxxxxxxxxxxx

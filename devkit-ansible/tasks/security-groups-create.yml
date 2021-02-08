@@ -1,0 +1,58 @@
+---
+- name: Create Necessary Master/Worker Security Group Rules for Cluster
+  amazon.aws.ec2_group:
+    name: "{{ cluster_name }}-{{ item }}-sg" 
+    description: Cluster {{ item }} security group
+    vpc_id: "{{ vpc_id }}"
+    region: us-gov-west-1
+    rules:
+      - proto: all
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+        rule_desc: Ingress rule
+      - proto: all
+        from_port: 0
+        to_port: 0
+        cidr_ip: "{{ vpc_cidr_block }}"
+        rule_desc: Ingress rule
+    rules_egress:
+      - proto: all
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+        rule_desc: Egress rule
+    tags: { "Name": "{{ cluster_name }}-{{ item }}-sg" }
+  loop:
+  - master
+  - worker 
+
+- name: Create Necessary Registry Security Group Rules for Cluster
+  amazon.aws.ec2_group:
+    name: "{{ cluster_name }}-registry-sg"
+    description: Cluster registry security group
+    vpc_id: "{{ vpc_id }}"
+    region: us-gov-west-1
+    rules:
+      - proto: tcp
+        from_port: 8080
+        to_port: 8080
+        cidr_ip: "{{ vpc_cidr_block }}"
+        rule_desc: Ingress rule port 8080
+      - proto: tcp
+        from_port: 5000
+        to_port: 5000
+        cidr_ip: "{{ vpc_cidr_block }}"
+        rule_desc: Ingress rule port 5000
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: "{{ vpc_cidr_block }}"
+        rule_desc: Ingress rule port 22
+    rules_egress:
+      - proto: all
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+        rule_desc: Egress rule
+    tags: { "Name": "{{ cluster_name }}-registry-sg" } 

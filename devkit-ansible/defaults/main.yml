@@ -1,0 +1,7 @@
+---
+bastion_ami: ami-d281d2b3
+rhcos_ami: ami-a1f6cec0
+bastion_disk_size: 100
+registry_disk_size: 120
+
+ssh_public_key: "{{ lookup('file', '~/.ssh/{{aws_ssh_key}}.pub') }}"

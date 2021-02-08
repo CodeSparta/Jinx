@@ -1,0 +1,12 @@
+---
+- name: Create Route53 Hosted Zone
+  community.aws.route53_zone:
+    zone: "{{ cluster_name }}.{{ cluster_domain }}"
+    vpc_id: '{{ vpc_id }}'
+    vpc_region: us-gov-west-1
+    comment: Cluster hosted zone
+  register: ec2_route53_zone
+
+- name: Set Route53 Zone ID
+  set_fact:
+    ec2_route53_zone_id: "{{ ec2_route53_zone.zone_id }}"

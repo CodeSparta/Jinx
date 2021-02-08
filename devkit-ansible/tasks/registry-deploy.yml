@@ -1,0 +1,65 @@
+---
+- name: Check if EC2 Bastion Exists
+  community.aws.ec2_instance_info:
+    filters:
+      "tag:Name": "{{ cluster_name }}-registry-node"
+      instance-state-code:
+      - "0"
+      - "16"
+      - "32"
+      - "64"
+      - "80"
+  register: ec2_instances
+
+- block:
+  - name: Convert key to openssh format
+    shell: "ssh-keygen -y -f ~/.ssh/{{ aws_ssh_key }}"
+    register: openssh_key
+
+  - set_fact:
+      ssh_public_key: "{{ openssh_key.stdout }}"
+
+  - name: Create EC2 Registry
+    amazon.aws.ec2:
+      key_name: "{{ aws_ssh_key }}"
+      group:
+      - "{{ cluster_name }}-registry-sg"
+      instance_type: m5.xlarge
+      image: "{{ rhcos_ami }}"
+      wait: yes
+      wait_timeout: 500
+      instance_tags:
+        Name: "{{ cluster_name }}-registry-node"
+      monitoring: yes
+      vpc_subnet_id: "{{ bastion_subnet_id }}"
+      assign_public_ip: yes
+      region: us-gov-west-1
+      user_data: "{{ lookup('template', 'user-data.sh.j2') | to_json }}"
+      volumes:
+      - volume_size: "{{ registry_disk_size }}"
+        device_name: /dev/sda1
+        delete_on_termination: yes
+    register: ec2_registry
+
+  - name: Use new Registry for IP variable
+    set_fact:
+      registry_ip: "{{ ec2_registry.instances[0].private_ip }}"
+
+  when: ( ec2_instances.instances | length ) == 0 
+
+- name: Set Existing Bastions IP varaible
+  set_fact:
+    registry_ip: "{{ ec2_instances.instances[0].private_ip_address }}"
+  when: ( ec2_instances.instances | length ) > 0
+
+- name: grab Route53 record information
+  community.aws.route53_info:
+    type: A
+    query: record_sets
+    hosted_zone_id: "{{ ec2_route53_zone_id }}"
+    start_record_name: "{{ cluster_name }}.{{ cluster_domain }}"
+  register: hosted_zone_records
+
+- name: Add Registry A Record
+  command: "aws route53 change-resource-record-sets --hosted-zone-id {{ ec2_route53_zone_id }} --change-batch '''{{ lookup('template', 'registry-record.json.j2') | to_json }}'''"
+    #  when: '"registry.{{ cluster_name }}.{{ cluster_domain }}." not in {{ ( hosted_zone_records | json_query("ResourceRecordSets[*].Name") ) }}'

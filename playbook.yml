@@ -1,0 +1,130 @@
+- hosts: seed
+  gather_facts: false
+  become: no
+  roles:
+  - { role: devkit-ansible }
+  tasks:
+  - name: Add bastion to dynamic host group
+    add_host:
+      hostname: "{{ bastion_ip }}"
+      groupname: "bastion"
+      ansible_ssh_private_key_file: "~/.ssh/{{ aws_ssh_key }}"
+      ansible_user: ec2-user
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+  - name: Add registry to dynamic host group
+    add_host:
+      hostname: "{{ registry_ip }}"
+      groupname: "registry"
+      ansible_ssh_private_key_file: "~/.ssh/{{ aws_ssh_key }}"
+      ansible_user: core
+      ansible_ssh_common_args: '-o ProxyCommand="ssh -i ~/.ssh/{{ aws_ssh_key }} -o StrictHostKeyChecking=no -W %h:%p -q ec2-user@{{ bastion_ip }}" -o StrictHostKeyChecking=no'
+
+- hosts: bastion 
+  remote_user: ec2-user
+  gather_facts: false
+  tasks:
+  - name: Wait for Bastion
+    wait_for_connection:
+      timeout: 300
+
+  - name: Copy Private Key to Bastion Host
+    copy:
+      src: "~/.ssh/{{ aws_ssh_key }}"
+      dest: "~/.ssh/{{ aws_ssh_key }}"
+      mode: '0400'
+
+  - name: Install podman on Bastion
+    become: true
+    package:
+      name: podman
+      state: present
+
+  - name: Create bundle Directory on Bastion
+    file:
+      state: directory
+      owner: ec2-user
+      path: "~/bundle"
+
+  - name: Write Quay Secret Key File on Bastion
+    copy:
+      content: "{{ quay_pull_secret }}"
+      dest: /tmp/quay-pull-secret.json
+
+    # TODO: Confirm this is a good enough check, goal here is to prevent long running podman
+    # command unless we absolutely need it
+  - name: Check if koffer bundle tar file exists
+    stat:
+      path: "bundle/koffer-bundle.openshift-{{openshift_version}}.tar.xz"
+    register: koffer_bundle
+
+  - name: Run Koffer on Bastion
+    command: "podman run -it --rm --pull always --volume ${HOME}/bundle:/root/bundle:z --volume /tmp/quay-pull-secret.json:/root/.docker/config.json:z quay.io/cloudctl/koffer:{{openshift_version}} bundle --silent --config https://codectl.io/docs/config/stable/sparta.yml"
+    when: not koffer_bundle.stat.exists
+
+  - name: Wait for Registry
+    wait_for_connection:
+      timeout: 300
+    delegate_to: "{{ groups.registry[0] }}"
+
+  - name: Copy Bundle to Registry
+    shell: rsync --progress -avzh bundle -e "ssh -i ~/.ssh/{{ aws_ssh_key }} -o StrictHostKeyChecking=no" core@{{ groups.registry[0] }}:~
+
+- hosts: registry
+  remote_user: core
+  gather_facts: false
+  become: yes
+  tasks:
+
+  # TODO: I can probably do the following 3 tasks in a better fashion in the future
+  - name: Check if Koffer openshift bundle has been extracted
+    stat:
+      path: "{{ item }}"
+    loop:
+    - "/root/platform/nginx"
+    - "/root/platform/bin"
+    - "/root/platform/mirror"
+    register: koffer_openshift_bundle
+
+  - name: Check if Sparta IaC has been extracted
+    stat:
+      path: "/root/platform/iac"
+    register: koffer_sptarta_iac_bundle
+
+  - name: Check if Cloudctl has been extracted
+    stat:
+      path: "/root/cloudctl"
+    register: koffer_cloudctl_bundle
+
+
+  - set_fact:
+      koffer_openshift_bundle_extracted: "{{ not ( false in ( koffer_openshift_bundle | json_query('results[*].stat.exists') ) ) }}"
+      koffer_sptarta_iac_bundle_extracted: "{{ koffer_sptarta_iac_bundle.stat.exists }}"
+      koffer_cloudctl_bundle_extracted: "{{ koffer_cloudctl_bundle.stat.exists }}"
+
+  - name: Extract the koffer bundle tar file
+    unarchive:
+      src: "/var/home/core/bundle/{{ item.tarfile }}"
+      dest: "/root"
+      remote_src: yes
+    when: not item.extracted
+    loop:
+    - tarfile: "koffer-bundle.openshift-{{ openshift_version }}.tar.xz" 
+      extracted: "{{ koffer_openshift_bundle_extracted }}"
+    - tarfile: "koffer-bundle.sparta-iac.tar"
+      extracted: "{{ koffer_sptarta_iac_bundle_extracted }}"
+    - tarfile: "koffer-bundle.tpdk-cloudctl.tar.xz"
+      extracted: "{{ koffer_cloudctl_bundle_extracted }}"
+
+  - name: Create New cluster-vars.yml
+    template:
+      src: cluster-vars.yml.j2
+      dest: /root/platform/iac/cluster-vars.yml 
+
+  - name: Initialize Konductor
+    shell: 
+      cmd: ./init.sh
+      chdir: /root/cloudctl
+    
+  - name: Start Konductor
+    shell: podman exec -it konductor /root/platform/iac/openshift/site.yml -i /root/platform/iac/openshift/inventory.yaml

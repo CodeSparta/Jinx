@@ -1,0 +1,25 @@
+---
+- name: Check if EC2 KeyPair Exists
+  command: "aws ec2 describe-key-pairs"
+  register: ec2_keypairs
+  changed_when: false
+
+- name: Set up EC2 KeyPairs and local files
+  block:
+  - name: Create EC2 KeyPair
+    amazon.aws.ec2_key:
+      name: "{{ aws_ssh_key }}"
+    register: aws_private_key_register
+  
+  - name: Create Private Key File
+    copy:
+      content: "{{ aws_private_key_register.key.private_key }}"
+      mode: '400'
+      dest: "~/.ssh/{{ aws_ssh_key }}"
+  
+  - name: Create Public Key
+    community.crypto.openssl_publickey:
+      path: "~/.ssh/{{ aws_ssh_key }}.pub"
+      mode: '600'
+      privatekey_path: "~/.ssh/{{ aws_ssh_key }}"
+  when: aws_ssh_key not in ( ec2_keypairs.stdout | from_json | json_query('KeyPairs[*].KeyName') )

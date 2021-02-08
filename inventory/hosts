@@ -1,0 +1,2 @@
+[seed]
+localhost ansible_connection=local
